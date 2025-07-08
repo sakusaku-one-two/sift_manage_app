@@ -1,0 +1,98 @@
+version: '3.8'  # version: バージョン、Docker Composeファイルの形式バージョン
+
+services:  # services: サービス（複数形）、Docker コンテナの定義
+
+  # PostgreSQL Database Service
+  # PostgreSQL データベースサービス
+  # database: データベース、service: サービス
+  postgres:
+    image: postgres:15-alpine  # image: イメージ、使用するDockerイメージ
+    container_name: sift_postgres  # container: コンテナ、name: 名前
+    restart: always  # restart: 再起動、always: 常に
+    env_file:  # env_file: 環境ファイル、environment file（環境変数ファイル）
+      - ./envs/postgres.env  # 環境変数ファイルのパス
+    environment:  # environment: 環境、環境変数の設定
+      # PostgreSQL initialization settings
+      # initialization: 初期化、settings: 設定
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --locale=C  # initdb: 初期データベース、args: 引数、encoding: エンコーディング、locale: ロケール
+    ports:  # ports: ポート（複数形）、ポートマッピング
+      - "5432:5432"  # ホストポート:コンテナポート
+    volumes:  # volumes: ボリューム（複数形）、データ永続化
+      # PostgreSQL data persistence
+      # data: データ、persistence: 永続化
+      - postgres_data:/var/lib/postgresql/data  # データ永続化用ボリューム
+      # Custom PostgreSQL configuration
+      # custom: カスタム、独自の、configuration: 設定
+      - ./scripts/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro  # init: 初期化、sql: データベース初期化スクリプト、ro: read-only（読み取り専用）
+    networks:  # networks: ネットワーク（複数形）
+      - sift_network  # カスタムネットワーク名
+    healthcheck:  # healthcheck: ヘルスチェック、健康状態確認
+      # PostgreSQL health monitoring
+      # health: 健康、monitoring: 監視
+      test: ["CMD-SHELL", "pg_isready -U sift_user -d sift_app_db"]  # test: テスト、cmd: コマンド、shell: シェル、pg_isready: PostgreSQL接続確認コマンド
+      interval: 30s  # interval: 間隔、実行間隔
+      timeout: 10s   # timeout: タイムアウト、制限時間
+      retries: 5     # retries: 再試行、リトライ回数
+      start_period: 60s  # start_period: 開始期間、コンテナ起動後の待機時間
+
+  # Application API Server Service
+  # アプリケーション API サーバーサービス
+  # application: アプリケーション、api: Application Programming Interface、server: サーバー
+  api_server:
+    build:  # build: ビルド、Dockerイメージの構築
+      context: ./app_api_server  # context: コンテキスト、ビルドコンテキスト
+      dockerfile: Dockerfile     # dockerfile: Dockerファイル
+    container_name: sift_api_server  # コンテナ名
+    restart: always
+    env_file:
+      - ./envs/postgres.env  # データベース接続用環境変数
+    ports:
+      - "8080:8080"  # APIサーバーポート
+    depends_on:  # depends_on: 依存関係、サービスの起動順序
+      postgres:
+        condition: service_healthy  # condition: 条件、service_healthy: サービスが健康状態
+    networks:
+      - sift_network
+    volumes:
+      # Application logs
+      # logs: ログ（複数形）
+      - ./logs:/app/logs  # ログファイル用ボリューム
+    healthcheck:
+      # API server health monitoring
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]  # curl: HTTP クライアント、-f: fail silently（サイレント失敗）
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL Admin Interface (optional)
+  # PostgreSQL 管理インターフェース（オプション）
+  # admin: 管理者、interface: インターフェース、optional: オプション
+  adminer:
+    image: adminer:latest  # latest: 最新版
+    container_name: sift_adminer
+    restart: unless-stopped  # unless-stopped: 停止されない限り
+    ports:
+      - "8081:8080"  # Adminer web interface port
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres  # default: デフォルト、server: サーバー
+    depends_on:
+      - postgres
+    networks:
+      - sift_network
+
+# Docker Networks Configuration
+# Docker ネットワーク設定
+# networks: ネットワーク（複数形）、configuration: 設定
+networks:
+  sift_network:  # カスタムネットワーク名
+    driver: bridge  # driver: ドライバー、bridge: ブリッジネットワーク
+
+# Docker Volumes Configuration
+# Docker ボリューム設定
+# volumes: ボリューム（複数形）
+volumes:
+  postgres_data:  # PostgreSQLデータ永続化用ボリューム
+    driver: local  # local: ローカル、ローカルストレージドライバー
+
+  
